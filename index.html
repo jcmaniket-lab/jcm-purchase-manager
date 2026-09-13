@@ -583,7 +583,9 @@ a{color:inherit;text-decoration:none;}
 /* =====================================================
    CONFIG - only thing in source code
 ===================================================== */
-var SHEET_URL = ''; // Set via Settings page, saved to localStorage
+var SHEET_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+// ^ Replace the value above with your Google Apps Script Web App URL
+// Example: 'https://script.google.com/macros/s/AKfy.../exec'
 
 /* =====================================================
    SESSION
@@ -612,7 +614,7 @@ function nqid(){ return ++_qid; }
    API CALL
 ===================================================== */
 function api(payload, cb, errCb){
-  SHEET_URL = localStorage.getItem('jcm_url') || '';
+  // SHEET_URL is set at top of file
   if(!SHEET_URL){
     if(errCb) errCb('no_sheet');
     else if(cb) cb(null);
@@ -630,7 +632,7 @@ function api(payload, cb, errCb){
 }
 
 function apiGet(params, cb){
-  SHEET_URL = localStorage.getItem('jcm_url') || '';
+  // SHEET_URL is set at top of file
   if(!SHEET_URL){ if(cb) cb(null); return; }
   spin(true);
   var qs = Object.keys(params).map(function(k){ return k+'='+encodeURIComponent(params[k]); }).join('&');
@@ -644,7 +646,7 @@ function apiGet(params, cb){
    LOAD + LOGIN
 ===================================================== */
 window.addEventListener('load', function(){
-  SHEET_URL = localStorage.getItem('jcm_url') || '';
+  // SHEET_URL is set at top of file
   // check saved session
   var saved = sessionStorage.getItem('jcm_me');
   if(saved){
@@ -663,7 +665,7 @@ function doLogin(){
   document.getElementById('loginBtn').disabled = true;
   document.getElementById('loginBtn').textContent = 'Signing in...';
 
-  SHEET_URL = localStorage.getItem('jcm_url') || '';
+  // SHEET_URL is set at top of file
   if(!SHEET_URL){
     // no sheet - allow owner bypass with hardcoded fallback (only for initial setup)
     document.getElementById('loginBtn').disabled=false;
@@ -696,8 +698,8 @@ function doLogin(){
 }
 
 function showLoginSettings(){
-  var url = prompt('Enter your Apps Script URL:');
-  if(url && url.trim()){ localStorage.setItem('jcm_url', url.trim()); SHEET_URL=url.trim(); toast('URL saved. Try signing in again.','ok'); }
+  var url = prompt('Enter your Apps Script URL (this updates in memory only - to save permanently edit SHEET_URL in index.html):');
+  if(url && url.trim()){ SHEET_URL=url.trim(); toast('URL set for this session. Edit SHEET_URL in index.html to make permanent.','ok'); }
 }
 
 function logout(){
@@ -726,9 +728,9 @@ function startApp(){
   toggleEl('btn-goto-wa',  can('whatsapp_copy'));
   toggleEl('btn-goto-add', can('add_requests'));
 
-  SHEET_URL = localStorage.getItem('jcm_url') || '';
+  // SHEET_URL is set at top of file
   var warn = document.getElementById('noSheetWarn');
-  if(warn) warn.style.display = SHEET_URL ? 'none' : 'block';
+  if(warn) warn.style.display = (SHEET_URL && SHEET_URL.indexOf('PASTE_YOUR')===-1) ? 'none' : 'block';
 
   tickReminders();
   loadRequests();
@@ -1103,8 +1105,9 @@ function renderOM(){
 
     var supF='<div class="fld sug-wrap"><label>Supplier name</label>'
       +'<input type="text" value="'+escA(q.supplier)+'" placeholder="e.g. Mehta Traders" autocomplete="off" id="qs'+q.qid+'"'
-      +' oninput="updQ('+q.qid+','supplier',this.value);sug(this,'suppliers','qsl'+q.qid+'')"'
-      +' onfocus="sug(this,'suppliers','qsl'+q.qid+'')" onblur="hideSug('qsl'+q.qid+'')">'
+      +' data-qid="'+q.qid+'" data-listid="qsl'+q.qid+'"'
+      +' oninput="updQ('+q.qid+',\'supplier\',this.value);sugFromInput(this)"'
+      +' onfocus="sugFromInput(this)" onblur="hideSugFromInput(this)">'
       +'<div class="sug-list" id="qsl'+q.qid+'"></div></div>';
 
     return '<div class="'+cls+'">'
@@ -1114,11 +1117,11 @@ function renderOM(){
         +'<div class="fld"><label>Price/pc (Rs.)'+(isPend?' : <span style="color:var(--amber);font-size:10px;font-weight:700;">enter when received</span>':'')+'</label>'
           +'<input type="number" value="'+(q.price||'')+'" placeholder="Waiting..." inputmode="decimal"'
           +(isPend?' style="border-color:var(--amber-bdr);background:var(--amber-bg);"':'')
-          +' oninput="updQ('+q.qid+','price',this.value)"></div>'
+          +' data-qid="'+q.qid+'" data-field="price" oninput="qInp(this)"></div>'
       +'</div>'
       +'<div class="fg2">'
-        +'<div class="fld"><label>Qty available</label><input type="number" value="'+(q.avail||'')+'" placeholder="How many they have" inputmode="numeric" oninput="updQ('+q.qid+','avail',this.value)"></div>'
-        +'<div class="fld"><label>GST %</label><input type="number" value="'+(q.gst||18)+'" inputmode="numeric" oninput="updQ('+q.qid+','gst',this.value)"></div>'
+        +'<div class="fld"><label>Qty available</label><input type="number" value="'+(q.avail||'')+'" placeholder="How many they have" inputmode="numeric" data-qid="'+q.qid+'" data-field="avail" oninput="qInp(this)"></div>'
+        +'<div class="fld"><label>GST %</label><input type="number" value="'+(q.gst||18)+'" inputmode="numeric" data-qid="'+q.qid+'" data-field="gst" oninput="qInp(this)"></div>'
       +'</div>'
       +resH+'</div>';
   }).join('');
@@ -1281,12 +1284,8 @@ function renderWACopy(){
     groups[k].push(r);
   });
   var msgs=Object.keys(groups).sort().map(function(g){
-    var lines=groups[g].map(function(r,i){return (i+1)+'. '+r.name+' - '+r.qty+' pcs';}).join('
-');
-    return 'JCM Enterprise - Quote Request
-
-'+lines+'
-Please share best rates.';
+    var lines=groups[g].map(function(r,i){return (i+1)+'. '+r.name+' - '+r.qty+' pcs';}).join('\n');
+    return 'JCM Enterprise - Quote Request\n\n'+lines+'\nPlease share best rates.';
   });
   el.innerHTML='<div style="margin-top:16px;">'
     +'<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin-bottom:10px;">'+msgs.length+' MESSAGE'+(msgs.length!==1?'S':'')+'</div>'
@@ -1415,7 +1414,7 @@ function renderEmps(){
           +'<div class="emp-name">'+escH(e.name)+'</div>'
           +'<div class="emp-perms">'+e.permissions.map(function(p){ return '<span class="perm-tag">'+(PERM_LABELS[p]||p)+'</span>'; }).join('')+'</div>'
         +'</div>'
-        +'<button class="btn btn-outline btn-xs" onclick="openEmpModal(''+escA(e.name)+'')">Edit</button>'
+        +'<button class="btn btn-outline btn-xs" data-empname="'+escA(e.name)+'" onclick="openEmpModalByBtn(this)">Edit</button>'
       +'</div>';
     }).join('');
   }
@@ -1482,7 +1481,7 @@ function sug(inp,type,listId){
   lst.innerHTML=hits.slice(0,8).map(function(s){
     var lo=s.toLowerCase(),idx=val?lo.indexOf(val):-1;
     var hi=idx>=0?escH(s.slice(0,idx))+'<em>'+escH(s.slice(idx,idx+val.length))+'</em>'+escH(s.slice(idx+val.length)):escH(s);
-    return '<div class="sug-item" onmousedown="pickSug(''+listId+'',''+escA(s)+'')">'+hi+'</div>';
+    return '<div class="sug-item" data-listid="'+listId+'" data-val="'+escA(s)+'" onmousedown="sugPick(this)">'+hi+'</div>';
   }).join('');
   lst.classList.add('open');
 }
@@ -1492,7 +1491,29 @@ function pickSug(listId,val){
   if(inp){inp.value=val;inp.dispatchEvent(new Event('input'));}
   if(lst) lst.classList.remove('open');
 }
+function sugPick(el){
+  var listId = el.getAttribute('data-listid');
+  var val    = el.getAttribute('data-val');
+  pickSug(listId, val);
+}
+function openEmpModalByBtn(btn){
+  var name = btn.getAttribute('data-empname');
+  openEmpModal(name);
+}
 function hideSug(id){setTimeout(function(){var l=document.getElementById(id);if(l)l.classList.remove('open');},180);}
+function sugFromInput(inp){
+  var listId = inp.getAttribute('data-listid');
+  sug(inp,'suppliers',listId);
+}
+function hideSugFromInput(inp){
+  var listId = inp.getAttribute('data-listid');
+  hideSug(listId);
+}
+function qInp(el){
+  var qid   = parseInt(el.getAttribute('data-qid'), 10);
+  var field = el.getAttribute('data-field');
+  updQ(qid, field, el.value);
+}
 function wireSug(inpId,listId,type,extra){
   var inp=document.getElementById(inpId),lst=document.getElementById(listId);
   if(!inp||!lst) return;
